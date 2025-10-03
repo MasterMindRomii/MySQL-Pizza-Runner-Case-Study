@@ -238,3 +238,89 @@ ORDER BY
   total_quantity DESC;
 
 # Note: The above queries assume that all delivered pizzas have a corresponding entry in the runner_orders table with a null value in the cancellation column. If this assumption does not hold, we need to modify the queries accordingly.
+
+-- D. Pricing and Ratings
+
+-- 1. To calculate the total revenue of Pizza Runner, we can join the customer_orders table with the pizza_names table and use the price information to calculate the total revenue.
+
+-- Without extras:
+
+SELECT SUM(
+  CASE
+    WHEN pizza_name = 'Meatlovers' THEN 12
+    WHEN pizza_name = 'Vegetarian' THEN 10
+    ELSE 0
+  END
+) AS total_revenue
+FROM customer_orders
+JOIN pizza_names ON customer_orders.pizza_id = pizza_names.pizza_id;
+
+-- 2. With extras and extra cheese costing $1:
+
+
+SELECT SUM(
+  CASE
+    WHEN pizza_name = 'Meatlovers' THEN 12 + 1*LENGTH(extras)
+    WHEN pizza_name = 'Vegetarian' THEN 10 + 1*LENGTH(extras)
+    ELSE 0
+  END
+) AS total_revenue
+FROM customer_orders
+JOIN pizza_names ON customer_orders.pizza_id = pizza_names.pizza_id;
+
+
+-- 3. To add a ratings system, we can create a new table called "delivery_ratings" with the following schema:
+
+CREATE TABLE delivery_ratings (
+  "rating_id" INTEGER PRIMARY KEY,
+  "order_id" INTEGER,
+  "runner_id" INTEGER,
+  "customer_rating" INTEGER
+);
+
+-- 4. We can then insert data for each successful customer order between 1 to 5:
+
+INSERT INTO delivery_ratings ("rating_id", "order_id", "runner_id", "customer_rating")
+VALUES
+  (1, 1, 1, 4),
+  (2, 2, 1, 3),
+  (3, 3, 1, 5);
+
+-- 5. To join all of the information together for successful deliveries, we can use the following query:
+
+SELECT
+  customer_orders.customer_id,
+  customer_orders.order_id,
+  runner_orders.runner_id,
+  delivery_ratings.customer_rating AS rating,
+  customer_orders.order_time,
+  runner_orders.pickup_time,
+  TIME(runner_orders.pickup_time - customer_orders.order_time) AS time_between_order_and_pickup,
+  TIME(runner_orders.delivery_time - runner_orders.pickup_time) AS delivery_duration,
+  ROUND(REPLACE(runner_orders.distance, 'km', '') / REPLACE(runner_orders.duration, 'minutes', '') * 60, 2) AS average_speed,
+  COUNT(customer_orders.pizza_id) AS total_number_of_pizzas
+FROM customer_orders
+JOIN pizza_names ON customer_orders.pizza_id = pizza_names.pizza_id
+JOIN runner_orders ON customer_orders.order_id = runner_orders.order_id
+JOIN delivery_ratings ON customer_orders.order_id = delivery_ratings.order_id
+WHERE runner_orders.cancellation IS NULL
+GROUP BY customer_orders.order_id;
+This will give us a table with the requested information for successful deliveries.
+
+--6. To calculate the amount of money Pizza Runner has left over after the deliveries, we can use the following query:
+
+
+SELECT
+  SUM(
+    CASE
+      WHEN pizza_name = 'Meatlovers' THEN 12 + 1*LENGTH(extras)
+      WHEN pizza_name = 'Vegetarian' THEN 10 + 1*LENGTH(extras)
+      ELSE 0
+    END
+  ) - (0.3 * REPLACE(runner_orders.distance, 'km', '')) AS net_profit
+FROM customer_orders
+JOIN pizza_names ON customer_orders.pizza_id = pizza_names.pizza_id
+JOIN runner_orders ON customer_orders.order_id = runner_orders.order_id
+WHERE runner_orders.cancellation IS NULL;
+
+# This will give us the amount of money Pizza Runner has left over after paying the runners. Note that we assume that there are no other costs involved in the deliveries.
